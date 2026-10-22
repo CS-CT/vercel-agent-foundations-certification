@@ -3,7 +3,7 @@ import { z } from "zod";
 import { ApiRequestError, createReturn, getCategories, getOrder, getProductById, getProducts, getProductStock, preauthorizeRefund, notifyReturnInProcess } from "@/lib/api";
 
 export const searchProducts = tool({
-  description: `Search the Vercel swag store product catalog. Use this whenever the user asks about products, what the store sells, or wants recommendations. Optionally narrow results to a single category.`,
+  description: `Search the Vercel swag store product catalog. Use this whenever the user asks about products, what the store sells, or wants recommendations. Optionally narrow results to a single category. Returns summary fields only (one image, no stock); when the user asks about one specific item, use getProductDetails instead.`,
   inputSchema: z.object({
     query: z
       .string()
@@ -103,7 +103,7 @@ export const returnOrder = tool({
 });
 
 export const getProductDetails = tool({
-  description: `Get the full details and live stock for ONE specific product in the Vercel swag store. Use this whenever the user asks about a particular item (e.g. "tell me more about the black hoodie", "is the beanie in stock?"), not for broad browsing. If you only know the product name, call searchProducts first to find its id or slug.`,
+  description: `Get the full details for ONE specific product in the Vercel swag store: description, price, all images, tags, live stock level, and related products (same category, or featured items if it has no others). Use this whenever the user asks about a particular item (e.g. "tell me more about the black hoodie", "is the beanie in stock?"), not for broad browsing. If you only know the product name, call searchProducts first to find its id or slug. The catalog has no size information; if asked about sizes, say so rather than guessing.`,
   inputSchema: z.object({
     productId: z
       .string()
@@ -115,6 +115,14 @@ export const getProductDetails = tool({
         getProductById(productId),
         getProductStock(productId),
       ]);
+      let related = (
+        await getProducts({ category: product.category, limit: 5 })
+      ).filter((p) => p.id !== product.id);
+      if (related.length === 0) {
+        related = (await getProducts({ featured: true, limit: 5 })).filter(
+          (p) => p.id !== product.id,
+        );
+      }
       return {
         id: product.id,
         name: product.name,
@@ -128,6 +136,15 @@ export const getProductDetails = tool({
         stock: stock.stock,
         inStock: stock.inStock,
         lowStock: stock.lowStock,
+        relatedProducts: related
+          .slice(0, 4)
+          .map((p) => ({
+            id: p.id,
+            name: p.name,
+            slug: p.slug,
+            price: p.price,
+            currency: p.currency,
+          })),
       };
     } catch (err) {
       const message =
