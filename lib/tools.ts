@@ -1,6 +1,6 @@
 import { tool } from "ai";
 import { z } from "zod";
-import { ApiRequestError, createReturn, getCategories, getOrder, getProducts, preauthorizeRefund, notifyReturnInProcess } from "@/lib/api";
+import { ApiRequestError, createReturn, getCategories, getOrder, getProductById, getProducts, getProductStock, preauthorizeRefund, notifyReturnInProcess } from "@/lib/api";
 
 export const searchProducts = tool({
   description: `Search the Vercel swag store product catalog. Use this whenever the user asks about products, what the store sells, or wants recommendations. Optionally narrow results to a single category.`,
@@ -94,6 +94,41 @@ export const returnOrder = tool({
         reason,
       });
       return { returnId: filed.id, status: filed.status };
+    } catch (err) {
+      const message =
+        err instanceof ApiRequestError ? err.message : "Unknown error";
+      return { error: message };
+    }
+  },
+});
+
+export const getProductDetails = tool({
+  description: `Get the full details and live stock for ONE specific product in the Vercel swag store. Use this whenever the user asks about a particular item (e.g. "tell me more about the black hoodie", "is the beanie in stock?"), not for broad browsing. If you only know the product name, call searchProducts first to find its id or slug.`,
+  inputSchema: z.object({
+    productId: z
+      .string()
+      .describe("The product id or slug, as returned by searchProducts."),
+  }),
+  execute: async ({ productId }) => {
+    try {
+      const [product, stock] = await Promise.all([
+        getProductById(productId),
+        getProductStock(productId),
+      ]);
+      return {
+        id: product.id,
+        name: product.name,
+        slug: product.slug,
+        description: product.description,
+        price: product.price,
+        currency: product.currency,
+        category: product.category,
+        images: product.images,
+        tags: product.tags,
+        stock: stock.stock,
+        inStock: stock.inStock,
+        lowStock: stock.lowStock,
+      };
     } catch (err) {
       const message =
         err instanceof ApiRequestError ? err.message : "Unknown error";
